@@ -10,9 +10,8 @@ from telegram.ext import (
 )
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pytz import timezone
-import asyncio
 
-TOKEN = '7607967930:AAEpkNKbBe0ZH3HZAZpLmK-atRpp0xR7URI'
+TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN_HERE'  # <-- замени на свой токен
 IMAGE_DIR = 'images'
 
 logging.basicConfig(
@@ -20,6 +19,8 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+scheduler = AsyncIOScheduler()
 
 active_signals = {}
 user_stats = {}
@@ -31,7 +32,7 @@ def generate_image(text: str, filename: str, color: str):
 
     try:
         font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 200)
-    except:
+    except Exception:
         font = ImageFont.load_default()
 
     best_font = font
@@ -42,7 +43,7 @@ def generate_image(text: str, filename: str, color: str):
             if (bbox[2] - bbox[0]) < img_size[0]*0.9:
                 best_font = test_font
                 break
-        except:
+        except Exception:
             continue
 
     bbox = draw.textbbox((0, 0), text, font=best_font)
@@ -71,11 +72,12 @@ async def send_result(context: ContextTypes.DEFAULT_TYPE, chat_id: int, is_win: 
         else:
             user_stats[chat_id]['losses'] += 1
 
+        # Удаляем предыдущее сообщение "⛔ Please wait..."
         try:
             await context.bot.delete_message(chat_id, signal_msg_id)
             for msg_id in extra_msgs:
                 await context.bot.delete_message(chat_id, msg_id)
-        except:
+        except Exception:
             pass
 
         users_count = random.randint(400, 600)
@@ -118,24 +120,29 @@ async def handle_signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
         active_signals[chat_id] = True
 
         # Запланировать вывод результата через 1.5 минуты
-        context.job_queue.run_once(
-            lambda ctx: asyncio.create_task(send_result(ctx, chat_id, is_win, odd, signal_msg.message_id, message_ids_to_delete)),
-            when=90  # 90 секунд = 1.5 минуты
+        scheduler.add_job(
+            send_result,
+            'date',
+            run_date=datetime.datetime.now() + datetime.timedelta(minutes=1.5),
+            args=[context, chat_id, is_win, odd, signal_msg.message_id, message_ids_to_delete]
         )
 
     except Exception as e:
-        logger.error(f"Error: {e}")
+        logger.error(f"Error in handle_signal: {e}")
 
 
-async def send_daily_stats(context: ContextTypes.DEFAULT_TYPE):
-    for chat_id, stats in user_stats.items():
-        msg = (
-            "📊 Daily Stats:\n"
-            f"✅ Wins: {stats['wins']}\n"
-            f"❌ Losses: {stats['losses']}"
-        )
-        await context.bot.send_message(chat_id=chat_id, text=msg)
-    user_stats.clear()
+async def send_daily_stats(bot):
+    try:
+        for chat_id, stats in user_stats.items():
+            msg = (
+                "📊 Daily Stats:\n"
+                f"✅ Wins: {stats['wins']}\n"
+                f"❌ Losses: {stats['losses']}"
+            )
+            await bot.send_message(chat_id=chat_id, text=msg)
+        user_stats.clear()
+    except Exception as e:
+        logger.error(f"Error sending daily stats: {e}")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -149,15 +156,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def main():
     os.makedirs(IMAGE_DIR, exist_ok=True)
+
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.Regex(r'^🎯 Get Signal$'), handle_signal))
 
     india_tz = timezone('Asia/Kolkata')
-    app.job_queue.run_daily(send_daily_stats, time=datetime.time(hour=9, minute=0, tzinfo=india_tz))
+    scheduler.configure(timezone=india_tz)
+    scheduler.start()
+
+    scheduler.add_job(
+        send_daily_stats,
+        'cron',
+        hour=9, minute=0,
+        args=[app.bot]
+    )
 
     await app.run_polling()
+
 
 if __name__ == '__main__':
     import asyncio
