@@ -10,8 +10,9 @@ from telegram.ext import (
 )
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pytz import timezone
+import asyncio
 
-TOKEN = os.getenv('BOT_TOKEN')
+TOKEN = '7607967930:AAEpkNKbBe0ZH3HZAZpLmK-atRpp0xR7URI'
 IMAGE_DIR = 'images'
 
 logging.basicConfig(
@@ -19,9 +20,6 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
-
-scheduler = AsyncIOScheduler()
-scheduler.start()
 
 active_signals = {}
 user_stats = {}
@@ -119,25 +117,24 @@ async def handle_signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         active_signals[chat_id] = True
 
-        scheduler.add_job(
-            send_result,
-            'date',
-            run_date=datetime.datetime.now() + datetime.timedelta(minutes=1.5),
-            args=[context, chat_id, is_win, odd, signal_msg.message_id, message_ids_to_delete]
+        # Запланировать вывод результата через 1.5 минуты
+        context.job_queue.run_once(
+            lambda ctx: asyncio.create_task(send_result(ctx, chat_id, is_win, odd, signal_msg.message_id, message_ids_to_delete)),
+            when=90  # 90 секунд = 1.5 минуты
         )
 
     except Exception as e:
         logger.error(f"Error: {e}")
 
 
-async def send_daily_stats(bot):
+async def send_daily_stats(context: ContextTypes.DEFAULT_TYPE):
     for chat_id, stats in user_stats.items():
         msg = (
             "📊 Daily Stats:\n"
             f"✅ Wins: {stats['wins']}\n"
             f"❌ Losses: {stats['losses']}"
         )
-        await bot.send_message(chat_id=chat_id, text=msg)
+        await context.bot.send_message(chat_id=chat_id, text=msg)
     user_stats.clear()
 
 
@@ -150,7 +147,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-if __name__ == '__main__':
+async def main():
     os.makedirs(IMAGE_DIR, exist_ok=True)
     app = ApplicationBuilder().token(TOKEN).build()
 
@@ -158,12 +155,10 @@ if __name__ == '__main__':
     app.add_handler(MessageHandler(filters.Regex(r'^🎯 Get Signal$'), handle_signal))
 
     india_tz = timezone('Asia/Kolkata')
-    scheduler.add_job(
-        send_daily_stats,
-        'cron',
-        hour=9, minute=0,
-        timezone=india_tz,
-        args=[app.bot]
-    )
+    app.job_queue.run_daily(send_daily_stats, time=datetime.time(hour=9, minute=0, tzinfo=india_tz))
 
-    app.run_polling()
+    await app.run_polling()
+
+if __name__ == '__main__':
+    import asyncio
+    asyncio.run(main())
