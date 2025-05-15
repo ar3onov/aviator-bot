@@ -11,7 +11,7 @@ from telegram.ext import (
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pytz import timezone
 
-TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN_HERE'  # <-- замени на свой токен
+TOKEN = '7607967930:AAEpkNKbBe0ZH3HZAZpLmK-atRpp0xR7URI'  # <-- замени на свой токен
 IMAGE_DIR = 'images'
 
 logging.basicConfig(
