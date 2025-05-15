@@ -1,4 +1,4 @@
 python-telegram-bot==20.3
-apscheduler
-Pillow
-pytz
+apscheduler==3.10.4.post2
+pillow==10.0.0
+pytz==2023.3
