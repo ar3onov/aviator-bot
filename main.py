@@ -4,14 +4,11 @@ import datetime
 import os
 from PIL import Image, ImageDraw, ImageFont
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
-from telegram.ext import (
-    ApplicationBuilder, CommandHandler, MessageHandler, filters,
-    ContextTypes
-)
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pytz import timezone
 
-TOKEN = '7607967930:AAEpkNKbBe0ZH3HZAZpLmK-atRpp0xR7URI'  # <-- замени на свой токен
+TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN_HERE'
 IMAGE_DIR = 'images'
 
 logging.basicConfig(
@@ -25,32 +22,21 @@ scheduler = AsyncIOScheduler()
 active_signals = {}
 user_stats = {}
 
+
 def generate_image(text: str, filename: str, color: str):
     img_size = (800, 400)
     img = Image.new('RGB', img_size, color=(30, 30, 30))
     draw = ImageDraw.Draw(img)
-
     try:
         font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 200)
     except Exception:
         font = ImageFont.load_default()
 
-    best_font = font
-    for font_size in range(200, 10, -10):
-        try:
-            test_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
-            bbox = draw.textbbox((0, 0), text, font=test_font)
-            if (bbox[2] - bbox[0]) < img_size[0]*0.9:
-                best_font = test_font
-                break
-        except Exception:
-            continue
-
-    bbox = draw.textbbox((0, 0), text, font=best_font)
+    bbox = draw.textbbox((0, 0), text, font=font)
     x = (img_size[0] - (bbox[2] - bbox[0])) / 2
     y = (img_size[1] - (bbox[3] - bbox[1])) / 2
 
-    draw.text((x, y), text, font=best_font, fill=color)
+    draw.text((x, y), text, font=font, fill=color)
 
     os.makedirs(IMAGE_DIR, exist_ok=True)
     filepath = os.path.join(IMAGE_DIR, filename)
@@ -72,7 +58,7 @@ async def send_result(context: ContextTypes.DEFAULT_TYPE, chat_id: int, is_win: 
         else:
             user_stats[chat_id]['losses'] += 1
 
-        # Удаляем предыдущее сообщение "⛔ Please wait..."
+        # Удаляем сообщение "⛔ Please wait..." и лишние сообщения
         try:
             await context.bot.delete_message(chat_id, signal_msg_id)
             for msg_id in extra_msgs:
@@ -154,7 +140,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def main():
+def main():
     os.makedirs(IMAGE_DIR, exist_ok=True)
 
     app = ApplicationBuilder().token(TOKEN).build()
@@ -173,9 +159,9 @@ async def main():
         args=[app.bot]
     )
 
-    await app.run_polling()
+    # Запускаем бота (без asyncio.run!)
+    app.run_polling()
 
 
 if __name__ == '__main__':
-    import asyncio
-    asyncio.run(main())
+    main()
